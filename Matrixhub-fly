@@ -1,0 +1,188 @@
+
+-- MatrixHub
+-- LocalScript para Roblox Studio
+-- Para probarlo, colócalo en StarterPlayerScripts.
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Stats = game:GetService("Stats")
+
+local player = Players.LocalPlayer
+local flying = false
+local flySpeed = 50
+local velocity, gyro
+local flyConnection
+
+-- Interfaz
+local gui = Instance.new("ScreenGui")
+gui.Name = "MatrixHub"
+gui.ResetOnSpawn = false
+gui.Parent = player:WaitForChild("PlayerGui")
+
+local panel = Instance.new("Frame")
+panel.Size = UDim2.fromOffset(270, 220)
+panel.Position = UDim2.new(0.5, -135, 0.5, -110)
+panel.BackgroundColor3 = Color3.fromRGB(5, 18, 10)
+panel.BorderColor3 = Color3.fromRGB(0, 255, 100)
+panel.BorderSizePixel = 2
+panel.Active = true
+panel.Draggable = true
+panel.Parent = gui
+
+local function makeButton(text, y)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(1, -24, 0, 38)
+    b.Position = UDim2.fromOffset(12, y)
+    b.BackgroundColor3 = Color3.fromRGB(0, 45, 20)
+    b.BorderColor3 = Color3.fromRGB(0, 255, 100)
+    b.TextColor3 = Color3.fromRGB(0, 255, 100)
+    b.Font = Enum.Font.Code
+    b.TextSize = 14
+    b.Text = text
+    b.Parent = panel
+    return b
+end
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -45, 0, 35)
+title.BackgroundTransparency = 1
+title.Position = UDim2.fromOffset(8, 0)
+title.Text = "MATRIXHUB"
+title.TextColor3 = Color3.fromRGB(0, 255, 100)
+title.Font = Enum.Font.Code
+title.TextSize = 20
+title.Parent = panel
+
+local close = Instance.new("TextButton")
+close.Size = UDim2.fromOffset(32, 30)
+close.Position = UDim2.new(1, -35, 0, 3)
+close.Text = "X"
+close.TextColor3 = Color3.new(1, 1, 1)
+close.BackgroundColor3 = Color3.fromRGB(100, 0, 0)
+close.Parent = panel
+
+local reopen = Instance.new("TextButton")
+reopen.Size = UDim2.fromOffset(100, 35)
+reopen.Position = UDim2.fromOffset(10, 10)
+reopen.Text = "ABRIR MATRIX"
+reopen.TextColor3 = Color3.fromRGB(0, 255, 100)
+reopen.BackgroundColor3 = Color3.fromRGB(5, 18, 10)
+reopen.Visible = false
+reopen.Parent = gui
+
+close.MouseButton1Click:Connect(function()
+    panel.Visible = false
+    reopen.Visible = true
+end)
+
+reopen.MouseButton1Click:Connect(function()
+    panel.Visible = true
+    reopen.Visible = false
+end)
+
+local flyButton = makeButton("FLY: OFF", 48)
+local pingButton = makeButton("PING: consultando...", 94)
+local speedButton = makeButton("VELOCIDAD: 50", 140)
+
+local function stopFly()
+    flying = false
+    if flyConnection then
+        flyConnection:Disconnect()
+        flyConnection = nil
+    end
+    if velocity then velocity:Destroy() velocity = nil end
+    if gyro then gyro:Destroy() gyro = nil end
+
+    local char = player.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.PlatformStand = false
+        hum.AutoRotate = true
+    end
+    flyButton.Text = "FLY: OFF"
+end
+
+local function startFly()
+    local char = player.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not root or not hum then return end
+
+    flying = true
+    flyButton.Text = "FLY: ON"
+    hum.PlatformStand = true
+    hum.AutoRotate = false
+
+    velocity = Instance.new("BodyVelocity")
+    velocity.MaxForce = Vector3.new(1e6, 1e6, 1e6)
+    velocity.Velocity = Vector3.zero
+    velocity.Parent = root
+
+    gyro = Instance.new("BodyGyro")
+    gyro.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
+    gyro.P = 1e4
+    gyro.CFrame = workspace.CurrentCamera.CFrame
+    gyro.Parent = root
+
+    flyConnection = RunService.RenderStepped:Connect(function()
+        if not flying or not root.Parent then
+            stopFly()
+            return
+        end
+
+        local camera = workspace.CurrentCamera
+        local move = Vector3.zero
+
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+            move += camera.CFrame.LookVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+            move -= camera.CFrame.LookVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+            move -= camera.CFrame.RightVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+            move += camera.CFrame.RightVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+            move += Vector3.yAxis
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+            move -= Vector3.yAxis
+        end
+
+        velocity.Velocity =
+            (move.Magnitude > 0 and move.Unit or Vector3.zero) * flySpeed
+        gyro.CFrame = camera.CFrame
+    end)
+end
+
+flyButton.MouseButton1Click:Connect(function()
+    if flying then
+        stopFly()
+    else
+        startFly()
+    end
+end)
+
+speedButton.MouseButton1Click:Connect(function()
+    flySpeed = flySpeed == 50 and 100 or 50
+    speedButton.Text = "VELOCIDAD: " .. flySpeed
+end)
+
+-- Lectura del ping reportado por Roblox
+task.spawn(function()
+    while gui.Parent do
+        local ok, result = pcall(function()
+            return Stats.Network.ServerStatsItem["Data Ping"]:GetValueString()
+        end)
+        pingButton.Text = ok and ("PING: " .. result) or "PING: N/D"
+        task.wait(1)
+    end
+end)
+
+player.CharacterAdded:Connect(function()
+    stopFly()
+end)
