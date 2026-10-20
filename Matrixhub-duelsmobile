@@ -1,0 +1,440 @@
+
+--==================================================
+-- MATRIXHUB MOBILE | DUELS EDITION
+-- LocalScript en StarterPlayerScripts
+--==================================================
+
+-- SERVICES
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- CONFIG
+local CFG = {
+    MinSpeed = 16,
+    MaxSpeed = 40,
+    DefaultSpeed = 24,
+    Green = Color3.fromRGB(0, 255, 125),
+    Dark = Color3.fromRGB(7, 14, 12),
+    Panel = Color3.fromRGB(12, 25, 20)
+}
+
+local state = {
+    speed = CFG.DefaultSpeed,
+    speedEnabled = false,
+    cameraLocked = false,
+    highlights = false,
+    training = false
+}
+
+local humanoid
+local savedCamera
+
+-- CLEAN OLD GUI
+local old = playerGui:FindFirstChild("MatrixHubDuels")
+if old then old:Destroy() end
+
+--==================================================
+-- UI HELPERS
+--==================================================
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "MatrixHubDuels"
+gui.ResetOnSpawn = false
+gui.DisplayOrder = 50
+gui.Parent = playerGui
+
+local function corner(obj, radius)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, radius or 8)
+    c.Parent = obj
+end
+
+local function makeLabel(parent, text, size, pos)
+    local l = Instance.new("TextLabel")
+    l.Size = size
+    l.Position = pos
+    l.BackgroundTransparency = 1
+    l.Text = text
+    l.TextColor3 = CFG.Green
+    l.Font = Enum.Font.Code
+    l.TextSize = 14
+    l.Parent = parent
+    return l
+end
+
+local function makeButton(parent, text, pos, size)
+    local b = Instance.new("TextButton")
+    b.Size = size
+    b.Position = pos
+    b.BackgroundColor3 = CFG.Panel
+    b.BorderColor3 = CFG.Green
+    b.Text = text
+    b.TextColor3 = CFG.Green
+    b.TextSize = 14
+    b.Font = Enum.Font.Code
+    b.AutoButtonColor = true
+    b.Parent = parent
+    corner(b, 7)
+    return b
+end
+
+--==================================================
+-- MAIN PANEL
+--==================================================
+
+local panel = Instance.new("Frame")
+panel.Name = "MainPanel"
+panel.Size = UDim2.fromOffset(265, 340)
+panel.Position = UDim2.new(0, 14, 0.2, 0)
+panel.BackgroundColor3 = CFG.Dark
+panel.BorderColor3 = CFG.Green
+panel.BorderSizePixel = 1
+panel.Active = true
+panel.Parent = gui
+corner(panel, 10)
+
+local header = Instance.new("Frame")
+header.Size = UDim2.new(1, 0, 0, 43)
+header.BackgroundColor3 = Color3.fromRGB(0, 48, 28)
+header.BorderSizePixel = 0
+header.Parent = panel
+corner(header, 10)
+
+makeLabel(
+    header,
+    " MATRIXHUB  /  DUELS",
+    UDim2.new(1, -45, 1, 0),
+    UDim2.fromOffset(8, 0)
+).TextXAlignment = Enum.TextXAlignment.Left
+
+local close = makeButton(
+    header, "X",
+    UDim2.new(1, -38, 0, 5),
+    UDim2.fromOffset(32, 32)
+)
+
+-- Drag panel with touch or mouse
+local dragging, dragStart, startPos
+
+header.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch
+    or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = panel.Position
+    end
+end)
+
+UIS.InputChanged:Connect(function(input)
+    if dragging and (
+        input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseMovement
+    ) then
+        local d = input.Position - dragStart
+        panel.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + d.X,
+            startPos.Y.Scale, startPos.Y.Offset + d.Y
+        )
+    end
+end)
+
+UIS.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch
+    or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+
+local reopen = makeButton(
+    gui, "M",
+    UDim2.new(0, 12, 0.5, 0),
+    UDim2.fromOffset(45, 45)
+)
+reopen.Visible = false
+
+close.Activated:Connect(function()
+    panel.Visible = false
+    reopen.Visible = true
+end)
+
+reopen.Activated:Connect(function()
+    panel.Visible = true
+    reopen.Visible = false
+end)
+
+--==================================================
+-- SPEED SLIDER
+--==================================================
+
+makeLabel(
+    panel, "MOVEMENT  /  SPEED",
+    UDim2.new(1, -20, 0, 22),
+    UDim2.fromOffset(10, 49)
+).TextXAlignment = Enum.TextXAlignment.Left
+
+local speedValue = makeLabel(
+    panel, tostring(state.speed),
+    UDim2.fromOffset(45, 22),
+    UDim2.new(1, -55, 0, 49)
+)
+
+local slider = Instance.new("Frame")
+slider.Position = UDim2.fromOffset(12, 78)
+slider.Size = UDim2.new(1, -24, 0, 12)
+slider.BackgroundColor3 = Color3.fromRGB(35, 50, 42)
+slider.Parent = panel
+corner(slider, 6)
+
+local fill = Instance.new("Frame")
+fill.Size = UDim2.new(
+    (state.speed - CFG.MinSpeed) /
+    (CFG.MaxSpeed - CFG.MinSpeed), 0, 1, 0
+)
+fill.BackgroundColor3 = CFG.Green
+fill.Parent = slider
+corner(fill, 6)
+
+local knob = Instance.new("TextButton")
+knob.Size = UDim2.fromOffset(20, 24)
+knob.AnchorPoint = Vector2.new(0.5, 0.5)
+knob.Position = UDim2.new(fill.Size.X.Scale, 0, 0.5, 0)
+knob.BackgroundColor3 = CFG.Green
+knob.Text = ""
+knob.Parent = slider
+corner(knob, 10)
+
+local function setSpeedFromX(x)
+    local alpha = math.clamp(
+        (x - slider.AbsolutePosition.X) /
+        slider.AbsoluteSize.X, 0, 1
+    )
+
+    state.speed = math.floor(
+        CFG.MinSpeed + alpha * (CFG.MaxSpeed - CFG.MinSpeed)
+    )
+
+    fill.Size = UDim2.new(alpha, 0, 1, 0)
+    knob.Position = UDim2.new(alpha, 0, 0.5, 0)
+    speedValue.Text = tostring(state.speed)
+
+    if state.speedEnabled and humanoid then
+        humanoid.WalkSpeed = state.speed
+    end
+end
+
+local sliding = false
+
+knob.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch
+    or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        sliding = true
+        setSpeedFromX(input.Position.X)
+    end
+end)
+
+slider.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch
+    or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        sliding = true
+        setSpeedFromX(input.Position.X)
+    end
+end)
+
+UIS.InputChanged:Connect(function(input)
+    if sliding and (
+        input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseMovement
+    ) then
+        setSpeedFromX(input.Position.X)
+    end
+end)
+
+UIS.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch
+    or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        sliding = false
+    end
+end)
+
+local speedToggle = makeButton(
+    panel, "SPEED BOOST : OFF",
+    UDim2.fromOffset(10, 103),
+    UDim2.new(1, -20, 0, 34)
+)
+
+speedToggle.Activated:Connect(function()
+    if not humanoid then return end
+
+    state.speedEnabled = not state.speedEnabled
+
+    humanoid.WalkSpeed = state.speedEnabled
+        and state.speed or CFG.MinSpeed
+
+    speedToggle.Text = state.speedEnabled
+        and "SPEED BOOST : ON"
+        or "SPEED BOOST : OFF"
+end)
+
+--==================================================
+-- CAMERA LOCK
+--==================================================
+
+local cameraButton = makeButton(
+    panel, "CAMERA LOCK : OFF",
+    UDim2.fromOffset(10, 145),
+    UDim2.new(1, -20, 0, 34)
+)
+
+cameraButton.Activated:Connect(function()
+    local camera = workspace.CurrentCamera
+    if not camera then return end
+
+    state.cameraLocked = not state.cameraLocked
+
+    if state.cameraLocked then
+        savedCamera = {
+            type = camera.CameraType,
+            subject = camera.CameraSubject
+        }
+
+        camera.CameraType = Enum.CameraType.Scriptable
+        camera.CFrame = camera.CFrame
+        cameraButton.Text = "CAMERA LOCK : ON"
+    else
+        camera.CameraType = savedCamera
+            and savedCamera.type or Enum.CameraType.Custom
+
+        if savedCamera then
+            camera.CameraSubject = savedCamera.subject
+        end
+
+        cameraButton.Text = "CAMERA LOCK : OFF"
+    end
+end)
+
+--==================================================
+-- PLAYER HIGHLIGHT
+-- For your own experience / authorized testing
+--==================================================
+
+local highlights = {}
+
+local function removeHighlight(character)
+    local h = highlights[character]
+    if h then
+        h:Destroy()
+        highlights[character] = nil
+    end
+end
+
+local function addHighlight(target)
+    if target == player or not state.highlights then return end
+
+    local char = target.Character
+    if not char then return end
+
+    removeHighlight(char)
+
+    local h = Instance.new("Highlight")
+    h.Name = "MatrixTargetHighlight"
+    h.FillColor = CFG.Green
+    h.OutlineColor = Color3.fromRGB(220, 255, 230)
+    h.FillTransparency = 0.75
+    h.DepthMode = Enum.HighlightDepthMode.Occluded
+    h.Adornee = char
+    h.Parent = char
+
+    highlights[char] = h
+end
+
+local highlightButton = makeButton(
+    panel, "PLAYER HIGHLIGHT : OFF",
+    UDim2.fromOffset(10, 187),
+    UDim2.new(1, -20, 0, 34)
+)
+
+highlightButton.Activated:Connect(function()
+    state.highlights = not state.highlights
+
+    highlightButton.Text = state.highlights
+        and "PLAYER HIGHLIGHT : ON"
+        or "PLAYER HIGHLIGHT : OFF"
+
+    if state.highlights then
+        for _, target in ipairs(Players:GetPlayers()) do
+            addHighlight(target)
+        end
+    else
+        for char in pairs(highlights) do
+            removeHighlight(char)
+        end
+    end
+end)
+
+local function connectPlayer(target)
+    target.CharacterAdded:Connect(function(char)
+        if state.highlights and target ~= player then
+            task.wait(0.5)
+            addHighlight(target)
+        end
+    end)
+end
+
+for _, target in ipairs(Players:GetPlayers()) do
+    connectPlayer(target)
+end
+
+Players.PlayerAdded:Connect(connectPlayer)
+
+Players.PlayerRemoving:Connect(function(target)
+    if target.Character then
+        removeHighlight(target.Character)
+    end
+end)
+
+--==================================================
+-- AIM TRAINING MODE
+-- Placeholder for practice targets in your own game
+--==================================================
+
+local trainingButton = makeButton(
+    panel, "AIM TRAINING : OFF",
+    UDim2.fromOffset(10, 229),
+    UDim2.new(1, -20, 0, 34)
+)
+
+trainingButton.Activated:Connect(function()
+    state.training = not state.training
+
+    trainingButton.Text = state.training
+        and "AIM TRAINING : ON"
+        or "AIM TRAINING : OFF"
+end)
+
+--==================================================
+-- CHARACTER RESPAWN
+--==================================================
+
+local function setupCharacter(char)
+    humanoid = char:WaitForChild("Humanoid", 10)
+
+    if humanoid then
+        humanoid.WalkSpeed = state.speedEnabled
+            and state.speed or CFG.MinSpeed
+    end
+
+    state.cameraLocked = false
+    cameraButton.Text = "CAMERA LOCK : OFF"
+end
+
+Player.CharacterAdded:Connect(setupCharacter)
+
+if player.Character then
+    setupCharacter(player.Character)
+end
+
+print("[MatrixHub Duels] Loaded")
