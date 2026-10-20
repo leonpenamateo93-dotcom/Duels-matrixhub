@@ -1,0 +1,716 @@
+
+-- Matrix Hub | Duels: Murderer vs Sheriff
+-- Cliente para Roblox Studio.
+-- ESP, tracers, rendimiento y controles móviles.
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CollectionService = game:GetService("CollectionService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local Camera = workspace.CurrentCamera
+local MovementRemote = ReplicatedStorage:WaitForChild(
+    "MatrixHubMovement", 10
+)
+
+if not RunService:IsStudio() then
+    warn("Matrix Hub: activa este módulo de pruebas en Roblox Studio.")
+    return
+end
+
+local old = PlayerGui:FindFirstChild("MatrixHub")
+if old then old:Destroy() end
+
+local Config = {
+    ESP = true,
+    Tracers = true,
+    AimAssist = false,
+    FOV = 120,
+    Speed = 16,
+    ESPColor = Color3.fromRGB(0, 255, 140),
+    TracerColor = Color3.fromRGB(0, 255, 140),
+}
+
+local Alive = true
+local Connections = {}
+local ESPObjects = {}
+local TracerObjects = {}
+local Frames = 0
+local Elapsed = 0
+local FPS = 0
+local LastStats = 0
+
+local function connect(signal, callback)
+    local connection = signal:Connect(callback)
+    table.insert(Connections, connection)
+    return connection
+end
+
+local function make(class, props, parent)
+    local obj = Instance.new(class)
+    for k, v in pairs(props) do
+        obj[k] = v
+    end
+    obj.Parent = parent
+    return obj
+end
+
+local function round(obj, radius)
+    make("UICorner", {
+        CornerRadius = UDim.new(0, radius or 8)
+    }, obj)
+end
+
+local function tween(obj, props)
+    TweenService:Create(
+        obj,
+        TweenInfo.new(0.16, Enum.EasingStyle.Quad),
+        props
+    ):Play()
+end
+
+local Gui = make("ScreenGui", {
+    Name = "MatrixHub",
+    ResetOnSpawn = false,
+    DisplayOrder = 50,
+}, PlayerGui)
+
+local Main = make("Frame", {
+    Name = "Main",
+    Size = UDim2.new(0.88, 0, 0, 420),
+    Position = UDim2.new(0.06, 0, 0.5, -210),
+    BackgroundColor3 = Color3.fromRGB(15, 19, 24),
+    BorderSizePixel = 0,
+    Active = true,
+}, Gui)
+
+make("UISizeConstraint", {
+    MinSize = Vector2.new(285, 350),
+    MaxSize = Vector2.new(440, 540),
+}, Main)
+
+round(Main, 12)
+
+make("UIStroke", {
+    Color = Config.ESPColor,
+    Transparency = 0.35,
+}, Main)
+
+local Header = make("Frame", {
+    Size = UDim2.new(1, 0, 0, 65),
+    BackgroundColor3 = Color3.fromRGB(25, 31, 37),
+    BorderSizePixel = 0,
+    Active = true,
+}, Main)
+round(Header, 12)
+
+make("TextLabel", {
+    Position = UDim2.fromOffset(12, 5),
+    Size = UDim2.new(1, -55, 0, 27),
+    BackgroundTransparency = 1,
+    Text = "MATRIX HUB | DUELS",
+    TextColor3 = Config.ESPColor,
+    Font = Enum.Font.GothamBold,
+    TextSize = 16,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, Header)
+
+local Stats = make("TextLabel", {
+    Position = UDim2.fromOffset(12, 33),
+    Size = UDim2.new(1, -22, 0, 20),
+    BackgroundTransparency = 1,
+    Text = "@" .. LocalPlayer.Name .. " | FPS: -- | Ping: --",
+    TextColor3 = Color3.fromRGB(225, 230, 235),
+    Font = Enum.Font.Gotham,
+    TextSize = 10,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, Header)
+
+local Close = make("TextButton", {
+    Position = UDim2.new(1, -38, 0, 9),
+    Size = UDim2.fromOffset(28, 28),
+    BackgroundColor3 = Color3.fromRGB(45, 52, 60),
+    Text = "X",
+    TextColor3 = Color3.new(1, 1, 1),
+    Font = Enum.Font.GothamBold,
+    TextSize = 13,
+}, Header)
+round(Close, 7)
+
+local TabBar = make("ScrollingFrame", {
+    Position = UDim2.fromOffset(8, 73),
+    Size = UDim2.new(1, -16, 0, 36),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ScrollBarThickness = 2,
+    ScrollingDirection = Enum.ScrollingDirection.X,
+    AutomaticCanvasSize = Enum.AutomaticSize.X,
+    CanvasSize = UDim2.new(),
+}, Main)
+
+make("UIListLayout", {
+    FillDirection = Enum.FillDirection.Horizontal,
+    Padding = UDim.new(0, 5),
+}, TabBar)
+
+local Content = make("ScrollingFrame", {
+    Position = UDim2.fromOffset(8, 116),
+    Size = UDim2.new(1, -16, 1, -124),
+    BackgroundColor3 = Color3.fromRGB(24, 29, 35),
+    BorderSizePixel = 0,
+    ScrollBarThickness = 3,
+    ScrollBarImageColor3 = Config.ESPColor,
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+    CanvasSize = UDim2.new(),
+}, Main)
+round(Content, 8)
+
+make("UIPadding", {
+    PaddingTop = UDim.new(0, 8),
+    PaddingLeft = UDim.new(0, 8),
+    PaddingRight = UDim.new(0, 8),
+    PaddingBottom = UDim.new(0, 8),
+}, Content)
+
+make("UIListLayout", {
+    Padding = UDim.new(0, 7),
+}, Content)
+
+local function clearContent()
+    for _, child in ipairs(Content:GetChildren()) do
+        if not child:IsA("UIListLayout")
+            and not child:IsA("UIPadding") then
+            child:Destroy()
+        end
+    end
+end
+
+local function label(text)
+    return make("TextLabel", {
+        Size = UDim2.new(1, -3, 0, 32),
+        BackgroundTransparency = 1,
+        Text = text,
+        TextColor3 = Config.ESPColor,
+        Font = Enum.Font.GothamBold,
+        TextSize = 13,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextWrapped = true,
+    }, Content)
+end
+
+local function button(text, callback)
+    local b = make("TextButton", {
+        Size = UDim2.new(1, -3, 0, 38),
+        BackgroundColor3 = Color3.fromRGB(39, 47, 54),
+        Text = text,
+        TextColor3 = Color3.new(1, 1, 1),
+        Font = Enum.Font.GothamMedium,
+        TextSize = 12,
+        AutoButtonColor = true,
+    }, Content)
+    round(b, 7)
+    b.Activated:Connect(callback)
+    return b
+end
+
+local function toggle(text, key, callback)
+    local b
+    local function refresh()
+        if b then
+            b.Text = text .. (Config[key] and "  [ON]" or "  [OFF]")
+            b.BackgroundColor3 = Config[key]
+                and Color3.fromRGB(0, 105, 64)
+                or Color3.fromRGB(39, 47, 54)
+        end
+    end
+
+    b = button("", function()
+        Config[key] = not Config[key]
+        refresh()
+        callback(Config[key])
+    end)
+    refresh()
+end
+
+local function slider(text, key, minValue, maxValue, callback)
+    label(text .. ": " .. tostring(Config[key]))
+
+    local bar = make("TextButton", {
+        Size = UDim2.new(1, -3, 0, 30),
+        BackgroundColor3 = Color3.fromRGB(42, 49, 57),
+        Text = "Desliza para ajustar",
+        TextColor3 = Color3.new(1, 1, 1),
+        Font = Enum.Font.Gotham,
+        TextSize = 10,
+        AutoButtonColor = false,
+    }, Content)
+    round(bar, 6)
+
+    local dragging = false
+
+    local function update(x)
+        local width = math.max(bar.AbsoluteSize.X, 1)
+        local alpha = math.clamp(
+            (x - bar.AbsolutePosition.X) / width, 0, 1
+        )
+        Config[key] = math.floor(
+            minValue + alpha * (maxValue - minValue) + 0.5
+        )
+        bar.Text = text .. ": " .. Config[key]
+        callback(Config[key])
+    end
+
+    bar.Activated:Connect(function()
+        update(UserInputService:GetMouseLocation().X)
+    end)
+
+    bar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch
+            or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            update(input.Position.X)
+        end
+    end)
+
+    connect(UserInputService.InputChanged, function(input)
+        if dragging and (
+            input.UserInputType == Enum.UserInputType.Touch
+            or input.UserInputType == Enum.UserInputType.MouseMovement
+        ) then
+            update(input.Position.X)
+        end
+    end)
+
+    connect(UserInputService.InputEnded, function(input)
+        if input.UserInputType == Enum.UserInputType.Touch
+            or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+end
+
+-- Visualización de jugadores mediante APIs normales de Roblox.
+
+local function removeVisuals(player)
+    if ESPObjects[player] then
+        ESPObjects[player]:Destroy()
+        ESPObjects[player] = nil
+    end
+
+    if TracerObjects[player] then
+        TracerObjects[player]:Destroy()
+        TracerObjects[player] = nil
+    end
+end
+
+local function createESP(player, character)
+    if player == LocalPlayer or not Config.ESP then return end
+
+    local head = character:FindFirstChild("Head")
+    if not head then return end
+
+    if ESPObjects[player] then
+        ESPObjects[player]:Destroy()
+    end
+
+    local billboard = make("BillboardGui", {
+        Name = "MatrixESP",
+        Adornee = head,
+        Size = UDim2.fromOffset(180, 42),
+        StudsOffset = Vector3.new(0, 2.5, 0),
+        AlwaysOnTop = true,
+        Enabled = true,
+    }, Gui)
+
+    local txt = make("TextLabel", {
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+        TextColor3 = Config.ESPColor,
+        TextStrokeTransparency = 0.3,
+        Font = Enum.Font.GothamBold,
+        TextSize = 12,
+        Text = player.Name,
+    }, billboard)
+
+    ESPObjects[player] = billboard
+
+    task.spawn(function()
+        while Alive and billboard.Parent
+            and character.Parent do
+            local myChar = LocalPlayer.Character
+            local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+            local theirRoot = character:FindFirstChild("HumanoidRootPart")
+
+            if myRoot and theirRoot then
+                local distance = (myRoot.Position - theirRoot.Position).Magnitude
+                txt.Text = string.format("%s | %d studs", player.Name, distance)
+                txt.TextColor3 = Config.ESPColor
+            end
+
+            task.wait(0.2)
+        end
+    end)
+end
+
+local function createTracer(player)
+    if player == LocalPlayer or not Config.Tracers then return end
+
+    local line = make("Frame", {
+        Name = "MatrixTracer",
+        AnchorPoint = Vector2.new(0, 0.5),
+        Size = UDim2.fromOffset(0, 2),
+        BackgroundColor3 = Config.TracerColor,
+        BorderSizePixel = 0,
+        Visible = false,
+    }, Gui)
+
+    TracerObjects[player] = line
+end
+
+local function attachPlayer(player)
+    if player == LocalPlayer then return end
+
+    local function characterAdded(character)
+        task.wait(0.25)
+        if not Alive then return end
+        removeVisuals(player)
+
+        if Config.ESP then createESP(player, character) end
+        if Config.Tracers then createTracer(player) end
+    end
+
+    connect(player.CharacterAdded, characterAdded)
+
+    if player.Character then
+        characterAdded(player.Character)
+    end
+
+    connect(player.CharacterRemoving, function()
+        removeVisuals(player)
+    end)
+end
+
+for _, player in ipairs(Players:GetPlayers()) do
+    attachPlayer(player)
+end
+
+connect(Players.PlayerAdded, attachPlayer)
+connect(Players.PlayerRemoving, removeVisuals)
+
+-- Círculo de FOV y objetivo de entrenamiento NPC.
+local FOVCircle = make("Frame", {
+    Name = "TrainingFOV",
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.fromScale(0.5, 0.5),
+    Size = UDim2.fromOffset(Config.FOV, Config.FOV),
+    BackgroundTransparency = 1,
+    Visible = false,
+}, Gui)
+
+round(FOVCircle, 200)
+
+make("UIStroke", {
+    Color = Config.ESPColor,
+    Thickness = 2,
+    Transparency = 0.15,
+}, FOVCircle)
+
+local TargetLabel = make("TextLabel", {
+    Position = UDim2.new(0, 10, 1, -35),
+    Size = UDim2.new(1, -20, 0, 25),
+    BackgroundColor3 = Color3.fromRGB(18, 22, 27),
+    BackgroundTransparency = 0.1,
+    TextColor3 = Config.ESPColor,
+    Font = Enum.Font.GothamBold,
+    TextSize = 12,
+    Text = "Objetivo de entrenamiento: ninguno",
+    Visible = false,
+}, Gui)
+round(TargetLabel, 6)
+
+local function renderTab(name)
+    clearContent()
+
+    if name == "Inicio" then
+        label("Bienvenido, @" .. LocalPlayer.Name)
+        label("FPS y ping aparecen en la cabecera.")
+        label("Matrix Hub | Modo de pruebas en Studio")
+        label("ESP: " .. tostring(Config.ESP))
+        label("Tracers: " .. tostring(Config.Tracers))
+
+    elseif name == "Visuales" then
+        label("PLAYER ESP")
+        toggle("Indicadores", "ESP", function(on)
+            for _, p in ipairs(Players:GetPlayers()) do
+                removeVisuals(p)
+                if on and p.Character then
+                    createESP(p, p.Character)
+                end
+                if Config.Tracers and p.Character then
+                    createTracer(p)
+                end
+            end
+        end)
+
+        label("TRACERS")
+        toggle("Líneas", "Tracers", function(on)
+            for _, p in ipairs(Players:GetPlayers()) do
+                if TracerObjects[p] then
+                    TracerObjects[p]:Destroy()
+                    TracerObjects[p] = nil
+                end
+                if on then createTracer(p) end
+            end
+        end)
+
+        button("Color visual verde", function()
+            Config.ESPColor = Color3.fromRGB(0, 255, 140)
+            Config.TracerColor = Config.ESPColor
+        end)
+
+        button("Color visual azul", function()
+            Config.ESPColor = Color3.fromRGB(60, 170, 255)
+            Config.TracerColor = Config.ESPColor
+        end)
+
+    elseif name == "Aim Assist" then
+        label("ENTRENAMIENTO CONTRA NPC")
+        toggle("Activar selección de objetivo", "AimAssist", function(on)
+            FOVCircle.Visible = on
+            TargetLabel.Visible = on
+        end)
+
+        slider("Diámetro FOV", "FOV", 60, 300, function(value)
+            FOVCircle.Size = UDim2.fromOffset(value, value)
+        end)
+
+        label("Solo selecciona NPC etiquetados TrainingTarget.")
+        label("No mueve la cámara ni apunta automáticamente a jugadores.")
+
+    elseif name == "Movement" then
+        label("MOVIMIENTO DE PRUEBAS")
+
+        slider("Velocidad", "Speed", 8, 32, function(value)
+            if MovementRemote then
+                MovementRemote:FireServer(value)
+            end
+        end)
+
+        button("Restablecer velocidad (16)", function()
+            Config.Speed = 16
+            if MovementRemote then
+                MovementRemote:FireServer("RESET")
+            end
+            renderTab("Movement")
+        end)
+
+    elseif name == "Settings" then
+        label("PREFERENCIAS DE ESTA SESIÓN")
+
+        button("Restablecer opciones visuales", function()
+            Config.ESP = false
+            Config.Tracers = false
+            Config.AimAssist = false
+            FOVCircle.Visible = false
+            TargetLabel.Visible = false
+
+            for _, p in ipairs(Players:GetPlayers()) do
+                removeVisuals(p)
+            end
+
+            renderTab("Settings")
+        end)
+
+        button("Cerrar completamente Matrix Hub", function()
+            Alive = false
+
+            for _, connection in ipairs(Connections) do
+                connection:Disconnect()
+            end
+
+            for _, p in ipairs(Players:GetPlayers()) do
+                removeVisuals(p)
+            end
+
+            Gui:Destroy()
+        end)
+    end
+end
+
+local tabs = {"Inicio", "Visuales", "Aim Assist", "Movement", "Settings"}
+
+for _, name in ipairs(tabs) do
+    local b = make("TextButton", {
+        Size = UDim2.fromOffset(name == "Aim Assist" and 88 or 78, 30),
+        BackgroundColor3 = Color3.fromRGB(38, 46, 53),
+        Text = name,
+        TextColor3 = Color3.new(1, 1, 1),
+        TextSize = 10,
+        Font = Enum.Font.GothamMedium,
+        AutoButtonColor = true,
+    }, TabBar)
+
+    round(b, 6)
+    b.Activated:Connect(function()
+        renderTab(name)
+    end)
+end
+
+-- Botón flotante.
+local Floating = make("TextButton", {
+    Size = UDim2.fromOffset(48, 48),
+    Position = UDim2.new(0, 12, 0.65, 0),
+    BackgroundColor3 = Color3.fromRGB(15, 19, 24),
+    Text = "M",
+    TextColor3 = Config.ESPColor,
+    TextSize = 23,
+    Font = Enum.Font.GothamBold,
+    Active = true,
+}, Gui)
+round(Floating, 16)
+
+Floating.Activated:Connect(function()
+    Main.Visible = not Main.Visible
+end)
+
+Close.Activated:Connect(function()
+    Main.Visible = false
+end)
+
+-- Arrastrar desde el encabezado.
+local dragging = false
+local dragStart
+local initialPosition
+
+Header.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        initialPosition = Main.Position
+    end
+end)
+
+connect(UserInputService.InputEnded, function(input)
+    if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+
+connect(UserInputService.InputChanged, function(input)
+    if not dragging then return end
+
+    if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        Main.Position = UDim2.new(
+            initialPosition.X.Scale,
+            initialPosition.X.Offset + delta.X,
+            initialPosition.Y.Scale,
+            initialPosition.Y.Offset + delta.Y
+        )
+    end
+end)
+
+-- FPS, ping y trazadores: un único bucle de actualización.
+connect(RunService.RenderStepped, function(dt)
+    if not Alive then return end
+
+    Frames += 1
+    Elapsed += dt
+
+    if Elapsed >= 0.5 then
+        FPS = math.floor(Frames / Elapsed + 0.5)
+        Frames = 0
+        Elapsed = 0
+    end
+
+    if os.clock() - LastStats >= 0.5 then
+        LastStats = os.clock()
+
+        local ping = 0
+        local ok, result = pcall(function()
+            return LocalPlayer:GetNetworkPing()
+        end)
+
+        if ok then ping = math.floor(result * 1000 + 0.5) end
+
+        Stats.Text = string.format(
+            "@%s | FPS: %d | Ping: %d ms",
+            LocalPlayer.Name, FPS, ping
+        )
+    end
+
+    local viewport = Camera.ViewportSize
+    FOVCircle.Position = UDim2.fromOffset(
+        viewport.X / 2,
+        viewport.Y / 2
+    )
+
+    for player, line in pairs(TracerObjects) do
+        local character = player.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+
+        if Config.Tracers and root and line.Parent then
+            local pos, visible = Camera:WorldToViewportPoint(root.Position)
+
+            if visible and pos.Z > 0 then
+                local origin = Vector2.new(viewport.X / 2, viewport.Y - 5)
+                local target = Vector2.new(pos.X, pos.Y)
+                local delta = target - origin
+
+                line.Visible = true
+                line.Position = UDim2.fromOffset(origin.X, origin.Y)
+                line.Size = UDim2.fromOffset(delta.Magnitude, 2)
+                line.Rotation = math.deg(
+                    math.atan2(delta.Y, delta.X)
+                )
+                line.BackgroundColor3 = Config.TracerColor
+            else
+                line.Visible = false
+            end
+        else
+            line.Visible = false
+        end
+    end
+
+    -- Selección de NPC para entrenamiento, sin apuntar a jugadores.
+    if Config.AimAssist then
+        local center = Vector2.new(viewport.X / 2, viewport.Y / 2)
+        local bestName = "ninguno"
+        local bestDistance = Config.FOV / 2
+
+        for _, npc in ipairs(CollectionService:GetTagged("TrainingTarget")) do
+            if npc:IsA("Model") then
+                local part = npc:FindFirstChild("Head")
+                    or npc:FindFirstChild("HumanoidRootPart")
+
+                if part then
+                    local screenPos, visible =
+                        Camera:WorldToViewportPoint(part.Position)
+
+                    if visible and screenPos.Z > 0 then
+                        local delta = (
+                            Vector2.new(screenPos.X, screenPos.Y) - center
+                        ).Magnitude
+
+                        if delta < bestDistance then
+                            bestDistance = delta
+                            bestName = npc.Name
+                        end
+                    end
+                end
+            end
+        end
+
+        TargetLabel.Text = "Objetivo de entrenamiento: " .. bestName
+    end
+end)
+
+renderTab("Inicio")
+print("[Matrix Hub] Inicializado en modo de pruebas.")
