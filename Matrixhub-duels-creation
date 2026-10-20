@@ -1,0 +1,60 @@
+
+-- Matrix Hub | Duels
+-- Servidor de pruebas para una experiencia propia.
+-- Los cambios de velocidad solo se aceptan en Studio.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local remote = ReplicatedStorage:FindFirstChild("MatrixHubMovement")
+
+if not remote then
+    remote = Instance.new("RemoteEvent")
+    remote.Name = "MatrixHubMovement"
+    remote.Parent = ReplicatedStorage
+end
+
+local DEFAULT_SPEED = 16
+local MIN_SPEED = 8
+local MAX_SPEED = 32
+
+local function applySpeed(player, speed)
+    if not RunService:IsStudio() then
+        return
+    end
+
+    if typeof(speed) ~= "number"
+        or speed ~= speed
+        or speed < MIN_SPEED
+        or speed > MAX_SPEED then
+        return
+    end
+
+    local character = player.Character
+    if not character then return end
+
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        humanoid.WalkSpeed = speed
+    end
+end
+
+remote.OnServerEvent:Connect(function(player, speed)
+    if speed == "RESET" then
+        applySpeed(player, DEFAULT_SPEED)
+        return
+    end
+
+    applySpeed(player, speed)
+end)
+
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function(character)
+        local humanoid = character:WaitForChild("Humanoid", 10)
+
+        if humanoid then
+            humanoid.WalkSpeed = DEFAULT_SPEED
+        end
+    end)
+end)
